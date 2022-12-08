@@ -397,7 +397,7 @@ class DynamicProgram:
         else:
             vf_shape = tuple([self.timesteps] + self.state_gridlengths)
 
-        self.valuefunction = np.zeros(vf_shape)
+        self.valuefunction = np.full(vf_shape, np.inf)
         self.opt_policy_idx = np.zeros(
             vf_shape + (self.num_ctrl_vars,), dtype='int')
         self.next_optimal_state_idx = np.zeros(
@@ -516,7 +516,7 @@ class DynamicProgram:
         This is very inefficient and should be replaced with a more efficient method.
         '''
 
-        # TODO only calculate allowed
+        # TODO only calculate the next states that are allowed
 
         if self.num_state_vars == 1:
 
@@ -530,62 +530,36 @@ class DynamicProgram:
             state_grid = self.state_grid
             state_gridlengths = self.state_gridlengths
 
-        allowed_ctrls_bool = self.get_allowed_constraints_bool(
-            step, state, next_states=next_states)
 
+        # Boolean array of allowed controls of shape (num_ctrl_vars, m),
+        # where m is the number of allowed controls which I think
+        # we can't perfectly know a priori
+        allowed_ctrls_bool = self.get_allowed_constraints_bool(
+            step, state)
+        
+        ctrls = np.array(self.ctrl_mesh)[:,allowed_ctrls_bool]
+        num_allowed_ctrls = ctrls.shape[1]
         # At this point, here are the shapes of things:
         # state: (num_state_vars,)
         # state_gridlengths: (num_state_vars, )
         # state_grid: (num_state_vars, state_gridlengths[0], ..., state_gridlengths[-1])
         #             = (num_state_vars, ) + tuple(state_gridlengths)
         # ctrl_mesh: (num_ctrl_vars, ctrl_gridlengths[0], ..., ctrl_gridlengths[-1])
+        # allowed_ctrls_bool: (num_ctrl_vars, m)
+        # ctrls: (num_ctrl_vars, m)
 
-        # state_shape = tuple([self.num_state_vars])+ tuple([1]*self.num_ctrl_vars)
-        state_shape = (self.num_state_vars, ) + (1,)*self.num_ctrl_vars
-        #           = (self.num_state_vars, 1, 1, 1, ..., 1). As many 1's as control variables
-
-        # The shape of next_states is one state per element of the control grid:
-        # next_states: (num_state_vars, ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1])
-        #
-        # think of it as a collection of matrices, one for each component of states, each
-        # matrix entry represent one combination of the components of the control
+        state_shape = (self.num_state_vars, 1)
         next_states = self.evolution_fun(step,
-                                         # *([1]*self.num_ctrl_vars) will unpack as 1,1,1,1...,1 to reshape array
                                          x=x.reshape(state_shape),
-                                         u=np.array(self.ctrl_mesh))
+                                         u=ctrls)
 
-        # This unpacks to
-        # idx_shapes = [ (state_gridlength[0], 1, 1, ..., 1),
-        #                (state_gridlength[1], 1, 1, ..., 1),
-        #                ...,
-        #                (state_gridlength[-1], 1, 1, ..., 1)]
-        # This is because we want to compare each component of next_states,
-        # which is an array of shape (ctrl_gridlengths[0], ..., ctrl_gridlengths[-1]),
-        # with the state grid in the corresponding dimension. So for each dimension
-        # of the state variables, we reshape state_grid[i] so that it broadcasts properly
-        # with next_states[i]. For example if we have 2 state vars and 3 ctrl vars,
-        # then next_states[i] has shape (c0, c1, c2) and we
-        # reshape state_grid[i] into (gl_i, 1, 1 , 1), and the comparison
-        # next_states[i]-state_grid[i].reshape(...) has shape (gl_1, c0, c1, c2).
-        # Then we take the argmin with respect to the first axis, giving us an array
-        # of indices of shape (c0, c1, c2), for each dimension
-        # so we get next_indices of shape (num_state_vars, c0, c1, c2).
-        #
-        # shape of next_indices: (num_state_vars, ctrl_gridlengths[0], ..., ctrl_gridlengths[-1])
-    
-        idx_shapes = [
-            (gl,) + (1,)*self.num_ctrl_vars for gl in state_gridlengths]
 
-        next_indices = np.array([(np.abs(next_states[i]
-                                         - state_grid[i].reshape(idx_shapes[i]))
-                                  .argmin(axis=0))
+        next_indices = np.array([(np.abs(next_states[i].reshape(num_allowed_ctrls,1)
+                                         - state_grid[i].reshape(1, self.state_gridlengths[i]))
+                                  .argmin(axis=1))
                                  for i in range(self.num_state_vars)])
 
-        # shape (ctrl_gridlenghts[0], ..., ctrl_gridlengths[-1]) of type bool
-        allowed_ctrls_bool = self.get_allowed_constraints_bool(
-            step, state, next_states=next_states)
-
-        return next_states, next_indices, allowed_ctrls_bool
+        return next_states, next_indices, ctrls, allowed_ctrls_bool
 
     def calculate_q_factor(self, step, state):
         '''
@@ -597,36 +571,13 @@ class DynamicProgram:
         # next_states: (num_state_vars, ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1])
         # next_states_idx: (num_state_vars, ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1]) type int
         # allowed_ctrls_bool: (ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1]) type bool
-        next_states, next_states_idx, allowed_ctrls_bool = self.get_all_next_states(
+        next_states, next_states_idx, allowed_ctrl, allowed_ctrls_bool = self.get_all_next_states(
             step, state)
 
-        # TODO MAKE THIS WORK!
-
-        # I think this is a list of shape (self.num_ctrl_vars, m)
-        allowed_ctrl = np.array(self.ctrl_mesh)[:, allowed_ctrls_bool]
-
-        next_vf = self.valuefunction[step +
-                                     1][tuple(next_states_idx[:, allowed_ctrls_bool])]
+        next_vf = self.valuefunction[(step + 1,) + tuple(next_states_idx)]
         q_factor = self.lagrangian(step, state, allowed_ctrl) + next_vf
 
-        # this works because tuple(next_states_idx) unpacks to
-        #   (next_states_idx[0], ...., next_states_idx[-1]),
-        # and each of those is an array of the shape of the control grid: (ctrl_gridlenghts[0], ..., ctrl_gridlengths[-1])
-        # and valuefunction has shape (timesteps, state_gridlenghts[0], ..., state_gridlenghts[-1]).
-        # So if my math is right, the following could also work
-        #   next_vf = self.valuefunction[(step + 1,) + tuple(next_states_idx)]? Try it and see if it breaks lol
-        #next_vf = self.valuefunction[step + 1][tuple(next_states_idx)]
-
-        # ~ is entry-wise not
-        #next_vf[~allowed_ctrls_bool] = np.inf
-
-        # shape of lagrangian is shape of an element of ctrl_mesh, i.e., (ctrl_gridlengths[0],...,ctrl_gridlengths[-1])
-        # assuming it is vectorized properly!
-        #q_factor = self.lagrangian(step, state, np.array(self.ctrl_mesh)) + next_vf
-
-        #q_factor = np.ma.array(q_factor.copy(), mask = ~allowed_ctrls_bool)
-
-        return q_factor, next_states[:, allowed_ctrls_bool], allowed_ctrl
+        return q_factor, next_states, allowed_ctrl
 
     def calculate_optimal_step(self, step, state):
 
