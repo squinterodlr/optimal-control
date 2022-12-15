@@ -501,7 +501,8 @@ class DynamicProgram:
                     constr_bool = np.isclose(
                         constr_eval, np.zeros_like(constr_eval))
 
-            constr_bool = constr_bool.all(axis=0)
+            if constr_bool.ndim > self.num_ctrl_vars:
+                constr_bool = constr_bool.all(axis=0)
             allowed_ctrls_bool = (allowed_ctrls_bool & constr_bool)
 
         # check state constraints
