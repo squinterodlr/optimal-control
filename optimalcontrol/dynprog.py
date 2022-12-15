@@ -516,8 +516,6 @@ class DynamicProgram:
         This is very inefficient and should be replaced with a more efficient method.
         '''
 
-        # TODO only calculate the next states that are allowed
-
         if self.num_state_vars == 1:
 
             x = np.array([state]).reshape((self.num_state_vars,))
@@ -579,30 +577,62 @@ class DynamicProgram:
 
         return q_factor, next_states, allowed_ctrl
 
-    def calculate_optimal_step(self, step, state):
-
-        q_factor, next_states, allowed_ctrl = self.calculate_q_factor(
+    def calculate_rollout_q_factor(self, step, state):
+        '''Currently implemented only for greedy policy and 1 step lookahead.
+        '''
+        next_states, next_states_idx, allowed_ctrl, allowed_ctrls_bool = self.get_all_next_states(
             step, state)
 
-        idx = q_factor.argmin()
-        opt_q_factor = q_factor[idx]
+        cost_list = []
 
+        for next_state in next_states.T:
+
+            # Evolve with greedy policy
+            trajectory = self.get_optimal_evolution_greedy(initial_state=next_state, initial_step=step+1)
+
+            # Calculate cost
+            cost = trajectory.cum_cost[-1]
+            cost_list.append(cost)
+
+        cost_list = np.array(cost_list)
+        best_idx = cost_list.argmin()
+        
+
+
+
+    def calculate_optimal_step(self, step, state, policy='exact'):
+
+        if policy == 'exact':
+            # Assumes that we have calculated the value function for the next step
+            q_factor, next_states, allowed_ctrl = self.calculate_q_factor(
+                step, state)
+
+            idx = q_factor.argmin()
+            opt_q_factor = q_factor[idx]
+
+        elif policy == 'greedy':
+
+            next_states, next_states_idx, allowed_ctrl, allowed_ctrls_bool = self.get_all_next_states(
+                step, state)
+            lagrangian = self.lagrangian(step, state, allowed_ctrl)
+            idx = lagrangian.argmin()
+            opt_q_factor = lagrangian[idx]
+        
+        elif policy == 'rollout':
+            raise NotImplementedError('Rollout policy not implemented yet.')
+
+        else:
+            raise ValueError('Unknown policy {}.'.format(policy))
+            
         opt_ctrl = allowed_ctrl[:, idx].reshape((self.num_ctrl_vars,))
         next_opt_state = next_states[:, idx].reshape((self.num_state_vars,))
-
-        # if np.ma.is_masked(q_factor) and q_factor.mask[opt_ctrl_idx]:
-        #    opt_q_factor = np.inf
-        # else:
-        #    opt_q_factor = q_factor[opt_ctrl_idx]
-
-        #next_opt_state = next_states[(slice(None),)+tuple(opt_ctrl_idx)].reshape(self.num_state_vars,)
-
         next_opt_state_idx = get_closest_idx(next_opt_state, self.state_grid)
         opt_ctrl_idx = get_closest_idx(opt_ctrl, self.ctrl_grid)
 
         return opt_ctrl_idx, opt_q_factor, next_opt_state, next_opt_state_idx
 
-    def calculate_valuefunction(self, method='brute'):
+
+    def calculate_valuefunction(self, policy='exact'):
         '''Calculate the value function recursively using the dynamic programming equation.
         method='brute' means that we find the minimum of the Q-factor by looking over all elements
         of the array. It's very slow but guaranteed to work.        
@@ -611,21 +641,30 @@ class DynamicProgram:
         # TODO: Implement interpolation methods of value function and more clever optimizations
         # TODO: Check parameters
         # TODO: Check when there are several states but just one control
-        print("Calculating value function. This might take time...")
         self.initialize_valuefunction()
         # print("bloop")
+
+        if policy == 'exact':
+            self.calculate_valuefunction_exact()
+        
+        else:
+            raise ValueError("Policy {} not recognized.".format(policy))
+
+    def calculate_valuefunction_exact(self):
+        
+        print("Calculating value function. This might take time...")
         if self.num_state_vars == 1:
             flat_range_state = self.state_gridlengths
         else:
             flat_range_state = len(self.state_mesh[0].flatten())
-
+        
         for step in tqdm.tqdm(range(self.timesteps - 2, -1, -1), desc='Step'):
-
+        
             # TODO change to multi-index iterator
             for flat_idx in tqdm.tqdm(range(flat_range_state)):
-
+        
                 if self.num_state_vars == 1:  # convert state to array
-
+        
                     #state = self.state_grid[flat_idx]
                     state = np.array([self.state_grid[flat_idx]])
                     #print("Index: {}".format(flat_idx))
@@ -637,22 +676,22 @@ class DynamicProgram:
                     #print("Index: {}\nState: {}".format(unraveled_ix, [X[unraveled_ix] for X in self.state_mesh]))
                     state = np.array([X[unraveled_ix]
                                      for X in self.state_mesh])
-
+        
                 # at this point, state is an ndarray of dimension (num_state_vars,)
-
+        
                 if not self.satisfies_state_constraints(step, state):
                     opt_q_factor = np.inf
                     opt_ctrl_idx = np.full((self.num_ctrl_vars,), np.nan)
                     next_opt_state_idx = np.full(
                         (self.num_state_vars,), np.nan)
-
+        
                 # TODO fix this hacky shit
                 else:
                     opt_ctrl_idx, opt_q_factor, next_opt_state, next_opt_state_idx = self.calculate_optimal_step(
                         step, state)
-
+        
                 if self.num_state_vars == 1:
-
+        
                     self.valuefunction[step, flat_idx] = opt_q_factor
                     self.next_optimal_state_idx[step,
                                                 flat_idx] = next_opt_state_idx
@@ -661,7 +700,7 @@ class DynamicProgram:
                         self.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
                     else:
                         self.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
-
+        
                 else:
                     self.valuefunction[step][unraveled_ix[::-1]] = opt_q_factor
                     self.opt_policy_idx[step][unraveled_ix[::-1]
@@ -669,14 +708,22 @@ class DynamicProgram:
                     self.next_optimal_state_idx[step][unraveled_ix[::-1]
                                                       ] = next_opt_state_idx
 
-    def get_optimal_evolution(self, initial_state, init_step=0):
+    def get_optimal_evolution(self, initial_state, init_step=0, policy='exact'):
 
+        if policy == 'exact':
+            return self.get_optimal_evolution_exact(initial_state, init_step)
+        elif policy == 'greedy':
+            return self.get_optimal_evolution_greedy(initial_state, init_step)
+        else:
+            raise ValueError("Policy {} not recognized.".format(policy))
+
+    def get_optimal_evolution_exact(self, initial_state, init_step=0):
         if self.valuefunction is None:
-            print("Value function not calculated yet.")
-            self.calculate_valuefunction()
+                print("Value function not calculated yet.")
+                self.calculate_valuefunction()
 
         initial_state = np.array([initial_state]).reshape(
-            (self.num_state_vars,))
+                (self.num_state_vars,))
         initial_state_idx = get_closest_idx(initial_state, self.state_grid)
         state_trajectory_idx = [initial_state_idx]
         state_trajectory = [initial_state]
@@ -697,7 +744,7 @@ class DynamicProgram:
             if self.num_state_vars == 1:
                 ctrl_idx = self.opt_policy_idx[step, state_idx][0]
                 next_state_idx = self.next_optimal_state_idx[step,
-                                                             state_idx][0]
+                                                            state_idx][0]
             else:
                 # might be array even in 1d of controls
                 ctrl_idx = self.opt_policy_idx[(step,)+tuple(state_idx)]
@@ -719,3 +766,6 @@ class DynamicProgram:
         system_traj.calculate_cost(self.lagrangian, self.end_cost)
 
         return system_traj
+
+    def get_optimal_evolution_greedy(self, initial_state, init_step=0):
+        raise NotImplementedError("Greedy policy not implemented yet.")
