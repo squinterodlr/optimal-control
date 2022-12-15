@@ -32,7 +32,7 @@ def get_closest_idx(x, x_grids):
         return np.argmin(np.abs(x-x_grids))
 
 
-def make_grid(xmin, xmax, step, alignment='left', num_points=None):
+def make_grid(xmin, xmax, step=None, alignment='left', num_points=None):
     '''
     Returns a regular grid between xmin and xmax with stepsize step. Takes the following arguments:
     xmin: The minimum value of the grid.
@@ -48,8 +48,10 @@ def make_grid(xmin, xmax, step, alignment='left', num_points=None):
     if num_points is not None:
         step = (xmax-xmin)/(num_points-1)
         num_steps = num_points
-    else:
+    elif step is not None:
         num_steps = int(np.floor((xmax-xmin)/step)) + 1
+    else:
+        raise ValueError("Either 'num_points' or 'step' must be specified.")
     if alignment == 'left':
         return np.array([xmin + step*k for k in range(num_steps)])
     elif alignment == 'right':
@@ -363,6 +365,25 @@ class DynamicProgram:
                 self.ctrl_bounds[0], self.ctrl_bounds[1], self.ctrl_stepsize, alignment)
             self.ctrl_gridlengths = len(self.ctrl_grid)
 
+    def update_griddata(self):
+
+
+        if self.num_state_vars > 1:
+            self.state_mesh = np.meshgrid(*self.state_grid)
+            self.state_gridlengths = [len(grid) for grid in self.state_grid]
+        else:
+            self.state_mesh = self.state_grid
+            self.state_gridlengths = len(self.state_grid)
+
+        if self.num_ctrl_vars > 1:
+            self.ctrl_mesh = np.meshgrid(*self.ctrl_grid)
+            self.ctrl_gridlengths = [len(grid) for grid in self.ctrl_grid]
+        else:
+            self.ctrl_mesh = self.ctrl_grid
+            self.ctrl_gridlengths = len(self.ctrl_grid)
+        
+        self.grids_are_initd = True
+    
     def set_grids(self, state_align='left', ctrl_align='left'):
         '''Sets the state and control grids of the system. Takes the following arguments:
         state_align: A string, or a tuple of strings. The alignment of the state grid. If it is a single string, then the alignment is the same for all state variables.
@@ -371,15 +392,7 @@ class DynamicProgram:
         self.set_state_grid(state_align)
         self.set_ctrl_grid(ctrl_align)
 
-        if self.num_state_vars > 1:
-            self.state_mesh = np.meshgrid(*self.state_grid)
-        else:
-            self.state_mesh = self.state_grid
-
-        if self.num_ctrl_vars > 1:
-            self.ctrl_mesh = np.meshgrid(*self.ctrl_grid)
-        else:
-            self.ctrl_mesh = self.ctrl_grid
+        self.update_griddata()
 
     def initialize_valuefunction(self):
         '''Initializes the value function and the optimal policy.
@@ -390,6 +403,7 @@ class DynamicProgram:
         if self.vf_is_initialized:
             pass
 
+        
         if not self.grids_are_initd:
             self.set_grids()
 
@@ -458,8 +472,8 @@ class DynamicProgram:
         if next_states is None:
             next_states = self.evolution_fun(step,
                                              # *([1]*self.num_ctrl_vars) will unpack as 1,1,1,1...,1 to reshape array
-                                             x=x.reshape(state_shape),
-                                             u=np.array(self.ctrl_mesh))
+                                             x.reshape(state_shape),
+                                             np.array(self.ctrl_mesh))
 
         # bounds check
         lower_bds, upper_bds = np.array(self.state_bounds).T
@@ -555,8 +569,8 @@ class DynamicProgram:
 
         state_shape = (self.num_state_vars, 1)
         next_states = self.evolution_fun(step,
-                                         x=x.reshape(state_shape),
-                                         u=ctrls)
+                                         x.reshape(state_shape),
+                                         ctrls)
 
 
         next_indices = np.array([(np.abs(next_states[i].reshape(num_allowed_ctrls,1)
@@ -652,6 +666,7 @@ class DynamicProgram:
         # print("bloop")
 
         if policy == 'exact':
+            print("Using exact policy. This might take time...")
             self.calculate_valuefunction_exact()
         
         else:
@@ -659,7 +674,7 @@ class DynamicProgram:
 
     def calculate_valuefunction_exact(self):
         
-        print("Calculating value function. This might take time...")
+        
         if self.num_state_vars == 1:
             flat_range_state = self.state_gridlengths
         else:
