@@ -574,7 +574,7 @@ class DynamicProgram:
 
 
         next_indices = np.array([(np.abs(next_states[i].reshape(num_allowed_ctrls,1)
-                                         - state_grid[i].reshape(1, self.state_gridlengths[i]))
+                                         - state_grid[i].reshape(1, state_gridlengths[i]))
                                   .argmin(axis=1))
                                  for i in range(self.num_state_vars)])
 
