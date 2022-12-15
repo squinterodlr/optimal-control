@@ -483,6 +483,7 @@ class DynamicProgram:
                     constr_bool = np.isclose(
                         constr_eval, np.zeros_like(constr_eval))
 
+            constr_bool = constr_bool.all(axis=0)
             allowed_ctrls_bool = (allowed_ctrls_bool & constr_bool)
 
         # check state constraints
@@ -504,6 +505,8 @@ class DynamicProgram:
                 except KeyError:
                     constr_bool = np.isclose(
                         constr_eval, np.zeros_like(constr_eval))
+            
+            constr_bool = constr_bool.all(axis=0)
 
             allowed_ctrls_bool = (allowed_ctrls_bool & constr_bool)
 
@@ -596,7 +599,7 @@ class DynamicProgram:
 
         cost_list = np.array(cost_list)
         best_idx = cost_list.argmin()
-        
+
 
 
 
