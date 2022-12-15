@@ -32,20 +32,24 @@ def get_closest_idx(x, x_grids):
         return np.argmin(np.abs(x-x_grids))
 
 
-def make_grid(xmin, xmax, step, alignment='left'):
+def make_grid(xmin, xmax, step, alignment='left', num_points=None):
     '''
     Returns a regular grid between xmin and xmax with stepsize step. Takes the following arguments:
     xmin: The minimum value of the grid.
     xmax: The maximum value of the grid.
     step: The stepsize of the grid.
     alignment: The alignment of the grid. Must be 'left', 'right', or 'center'. Default is 'left'.
+    num_points: The number of points in the grid. If specified, overrides step.
 
     If alignment = 'left' then the grid is guaranteed to include xmin
     If alignment = 'right' then the grid is guaranteed to include xmax
     if alignment = 'center' then the grid is symmetric around (xmin-xmax)/2, and will include it if the grid is odd.
     '''
-
-    num_steps = int(np.floor((xmax-xmin)/step)) + 1
+    if num_points is not None:
+        step = (xmax-xmin)/(num_points-1)
+        num_steps = num_points
+    else:
+        num_steps = int(np.floor((xmax-xmin)/step)) + 1
     if alignment == 'left':
         return np.array([xmin + step*k for k in range(num_steps)])
     elif alignment == 'right':
