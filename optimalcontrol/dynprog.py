@@ -366,8 +366,8 @@ class DynamicProgram:
             self.ctrl_gridlengths = len(self.ctrl_grid)
 
     def update_griddata(self):
-
-
+        '''Updates the grid data of the system. This is called automatically when the grids are set.
+        '''
         if self.num_state_vars > 1:
             self.state_mesh = np.meshgrid(*self.state_grid)
             self.state_gridlengths = [len(grid) for grid in self.state_grid]
@@ -599,29 +599,6 @@ class DynamicProgram:
 
         return q_factor, next_states, allowed_ctrl
 
-    def calculate_rollout_q_factor(self, step, state):
-        '''Currently implemented only for greedy policy and 1 step lookahead.
-        '''
-        next_states, next_states_idx, allowed_ctrl, allowed_ctrls_bool = self.get_all_next_states(
-            step, state)
-
-        cost_list = []
-
-        for next_state in next_states.T:
-
-            # Evolve with greedy policy
-            trajectory = self.get_optimal_evolution_greedy(initial_state=next_state, initial_step=step+1)
-
-            # Calculate cost
-            cost = trajectory.cum_cost[-1]
-            cost_list.append(cost)
-
-        cost_list = np.array(cost_list)
-        best_idx = cost_list.argmin()
-
-
-
-
     def calculate_optimal_step(self, step, state, policy='exact'):
 
         if policy == 'exact':
@@ -656,7 +633,7 @@ class DynamicProgram:
 
     def calculate_valuefunction(self, policy='exact'):
         '''Calculate the value function recursively using the dynamic programming equation.
-        method='brute' means that we find the minimum of the Q-factor by looking over all elements
+        policy='exact' means that we find the minimum of the Q-factor by looking over all elements
         of the array. It's very slow but guaranteed to work.        
         '''
 
