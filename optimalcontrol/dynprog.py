@@ -4,7 +4,8 @@ Dynamic programming
 import numpy as np
 from .systemtrajectory import SystemTrajectory
 from ._helpers import get_closest_idx, make_grid, is_array
-from ._exact_dp import calculate_valuefunction_exact, get_optimal_evolution_exact, calculate_q_factor
+from ._exact_dp import calculate_valuefunction_exact, get_optimal_evolution_exact
+from ._constraints import get_allowed_constraints_bool
 class DynamicProgram:
     '''A class that solves a dynamic program. Takes the following arguments:
     evolution_fun: A function that takes a step, a state, and a control and returns the next state.
@@ -275,89 +276,6 @@ class DynamicProgram:
         else:
             return np.array([self.ctrl_grid[i][ctrl_idx[i]] for i in range(self.num_ctrl_vars)])
 
-    def get_allowed_constraints_bool(self, step, state, next_states=None):
-        '''Returns a boolean array of the allowed controls. Takes the following arguments:
-        step: The current timestep.
-        state: The current state.
-        next_states: The next states. If not provided, they are calculated.
-        Returns:
-        A boolean array of the allowed controls.
-        '''
-        if self.num_state_vars == 1:
-
-            if not is_array(state):
-                x = np.array([state])
-            else:
-                x = state
-
-        else:
-            x = state
-
-        state_shape = tuple([self.num_state_vars]) + \
-            tuple([1]*self.num_ctrl_vars)
-
-        if next_states is None:
-            next_states = self.evolution_fun(step,
-                                             # *([1]*self.num_ctrl_vars) will unpack as 1,1,1,1...,1 to reshape array
-                                             x.reshape(state_shape),
-                                             np.array(self.ctrl_mesh))
-
-        # bounds check
-        lower_bds, upper_bds = np.array(self.state_bounds).T
-
-        allowed_ctrls_bool = (((next_states >= lower_bds.reshape(state_shape))
-                               & (next_states <= upper_bds.reshape(state_shape)))
-                              .all(axis=0))
-        # check ctrl constraints
-        if isinstance(self.ctrl_constraints, dict):
-            ctrl_constraints = [self.ctrl_constraints]
-        else:
-            ctrl_constraints = self.ctrl_constraints
-
-        for constraint in ctrl_constraints:
-
-            constr_eval = constraint['fun'](step, np.array(self.ctrl_mesh))
-
-            if constraint['type'] == 'ineq':
-                constr_bool = (constr_eval >= 0)
-            else:
-                try:
-                    constr_bool = np.isclose(constr_eval, np.zeros_like(
-                        constr_eval), atol=constraint['tol'])
-                except KeyError:
-                    constr_bool = np.isclose(
-                        constr_eval, np.zeros_like(constr_eval))
-
-            if constr_bool.ndim > self.num_ctrl_vars:
-                constr_bool = constr_bool.all(axis=0)
-            allowed_ctrls_bool = (allowed_ctrls_bool & constr_bool)
-
-        # check state constraints
-        if isinstance(self.state_constraints, dict):
-            state_constraints = [self.state_constraints]
-        else:
-            state_constraints = self.state_constraints
-
-        for constraint in state_constraints:
-
-            constr_eval = constraint['fun'](step, next_states)
-
-            if constraint['type'] == 'ineq':
-                constr_bool = (constr_eval >= 0)
-            else:
-                try:
-                    constr_bool = np.isclose(constr_eval, np.zeros_like(
-                        constr_eval), atol=constraint['tol'])
-                except KeyError:
-                    constr_bool = np.isclose(
-                        constr_eval, np.zeros_like(constr_eval))
-
-            constr_bool = constr_bool.all(axis=0)
-
-            allowed_ctrls_bool = (allowed_ctrls_bool & constr_bool)
-
-        return allowed_ctrls_bool
-
     def get_all_next_states(self, step, state):
         '''
         Returns a grid of all next states based on the evolution equation and the
@@ -380,7 +298,7 @@ class DynamicProgram:
         # Boolean array of allowed controls of shape (num_ctrl_vars, m),
         # where m is the number of allowed controls which I think
         # we can't perfectly know a priori
-        allowed_ctrls_bool = self.get_allowed_constraints_bool(
+        allowed_ctrls_bool = get_allowed_constraints_bool(self,
             step, state)
 
         ctrls = np.array(self.ctrl_mesh)[:, allowed_ctrls_bool]
@@ -405,24 +323,6 @@ class DynamicProgram:
                                  for i in range(self.num_state_vars)])
 
         return next_states, next_indices, ctrls, allowed_ctrls_bool
-
-    def calculate_q_factor(self, step, state):
-        '''
-        Calculates the Q-factor of a state, given all admissible controls. Returns
-        array in the shape of the control grid.
-        '''
-
-        # Shapes of things here:
-        # next_states: (num_state_vars, ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1])
-        # next_states_idx: (num_state_vars, ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1]) type int
-        # allowed_ctrls_bool: (ctrl_gridlenghts[0], ..., ctrl_gridlenghts[-1]) type bool
-        next_states, next_states_idx, allowed_ctrl, allowed_ctrls_bool = self.get_all_next_states(
-            step, state)
-
-        next_vf = self.valuefunction[(step + 1,) + tuple(next_states_idx)]
-        q_factor = self.lagrangian(step, state, allowed_ctrl) + next_vf
-
-        return q_factor, next_states, allowed_ctrl
 
     def calculate_optimal_step(self, step, state, policy='exact'):
 
