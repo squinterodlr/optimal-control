@@ -791,4 +791,30 @@ class DynamicProgram:
         return system_traj
 
     def get_optimal_evolution_greedy(self, initial_state, init_step=0):
-        raise NotImplementedError("Greedy policy not implemented yet.")
+        current_state = np.array([initial_state]).reshape(
+                (self.num_state_vars,))
+
+        state_trajectory = [current_state]
+        ctrl_trajectory = []
+
+        for step in range(init_step, self.timesteps - 1):
+
+            (opt_ctrl_idx,
+            opt_q_factor,
+            next_opt_state,
+            next_opt_state_idx) = self.calculate_optimal_step(step, current_state, policy='greedy')
+
+            ctrl = self.get_ctrl_from_idx(opt_ctrl_idx)
+            
+            state_trajectory.append(next_opt_state)
+            ctrl_trajectory.append(ctrl)
+
+            current_state = next_opt_state
+
+        system_traj = SystemTrajectory()
+        system_traj.set_ctrl_trajectory(np.array(ctrl_trajectory))
+        system_traj.set_state_trajectory(np.array(state_trajectory))
+        system_traj.calculate_cost(self.lagrangian, self.end_cost)
+
+        return system_traj
+
