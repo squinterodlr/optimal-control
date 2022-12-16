@@ -1,151 +1,10 @@
 """
 Dynamic programming
 """
-import sys
 import numpy as np
-import collections.abc
-from scipy import optimize, interpolate
-import tqdm
-import collections
-import functools
-
-
-def get_closest_idx(x, x_grids):
-    '''
-    Returns index of the element of x_grids that is closest to x.
-    We assume x_grids might have different sizes.
-    Returns a list of indices, one for each component of x.
-    x_grids must be a list of ndarrays.
-
-    This is dumb (i.e. expensive) but 60% of the time, it works every time.
-    '''
-
-    if is_array(x):
-
-        if len(x) == 1:
-            return np.array([np.argmin(np.abs(x[0]-x_grids))])
-
-        else:
-            return [np.argmin(np.abs(xval - x_grids[i])) for i, xval in enumerate(x)]
-
-    else:
-        return np.argmin(np.abs(x-x_grids))
-
-
-def make_grid(xmin, xmax, step=None, alignment='left', num_points=None):
-    '''
-    Returns a regular grid between xmin and xmax with stepsize step. Takes the following arguments:
-    xmin: The minimum value of the grid.
-    xmax: The maximum value of the grid.
-    step: The stepsize of the grid.
-    alignment: The alignment of the grid. Must be 'left', 'right', or 'center'. Default is 'left'.
-    num_points: The number of points in the grid. If specified, overrides step.
-
-    If alignment = 'left' then the grid is guaranteed to include xmin
-    If alignment = 'right' then the grid is guaranteed to include xmax
-    if alignment = 'center' then the grid is symmetric around (xmin-xmax)/2, and will include it if the grid is odd.
-    '''
-    if num_points is not None:
-        step = (xmax-xmin)/(num_points-1)
-        num_steps = num_points
-    elif step is not None:
-        num_steps = int(np.floor((xmax-xmin)/step)) + 1
-    else:
-        raise ValueError("Either 'num_points' or 'step' must be specified.")
-    if alignment == 'left':
-        return np.array([xmin + step*k for k in range(num_steps)])
-    elif alignment == 'right':
-        return np.array([xmax - step*(num_steps-k-1) for k in range(num_steps)])
-    elif alignment == 'center':
-        m = int(np.floor((xmax-xmin)/step)) + 1
-        return np.array([0.5*(xmax + xmin) + 0.5*(2*k - m + 1)*step for k in range(m)])
-    else:
-        raise ValueError(
-            "'alignment' must be 'left', 'right', or 'center'. Received '{}'".format(alignment))
-
-
-def is_array(x):
-    '''Returns true if x is an array-like object.
-    '''
-    return isinstance(x, (collections.abc.Sequence, np.ndarray)) and not isinstance(x, str)  # I know that strings are arrays just leave me alone
-
-
-# from https://wiki.python.org/moin/PythonDecoratorLibrary#Memoize
-class memoized(object):
-    '''Decorator. Caches a function's return value each time it is called.
-    If called later with the same arguments, the cached value is returned
-    (not reevaluated).
-    '''
-
-    def __init__(self, func):
-        self.func = func
-        self.cache = {}
-
-    def __call__(self, *args):
-        if not isinstance(args, collections.Hashable):
-            # uncacheable. a list, for instance.
-            # better to not cache than blow up.
-            return self.func(*args)
-        if args in self.cache:
-            return self.cache[args]
-        else:
-            value = self.func(*args)
-            self.cache[args] = value
-            return value
-
-    def __repr__(self):
-        '''Return the function's docstring.'''
-        return self.func.__doc__
-
-    def __get__(self, obj, objtype):
-        '''Support instance methods.'''
-        return functools.partial(self.__call__, obj)
-
-    def flush_cache(self):
-        '''Flush the cache'''
-        self.cache.clear()
-
-
-class SystemTrajectory:
-    '''Holds a trajectory of state and control variables. 
-    '''
-
-    def __init__(self):
-        '''Initializes the trajectory.
-        '''
-        self.state_traj = []
-        self.ctrl_traj = []
-        self.length = 0
-        self.t_init = 0
-
-    def set_state_trajectory(self, traj):
-        self.state_traj = traj[:]
-        self.set_length(len(traj))
-
-    def set_ctrl_trajectory(self, traj):
-        self.ctrl_traj = traj[:]
-        self.set_length(len(traj))
-
-    def set_length(self, length):
-        '''Sets the length of the trajectory.
-        '''
-        self.length = length
-
-    def __len__(self):
-        return self.length
-
-    def calculate_cost(self, lagrangian, end_cost):
-        '''Calculates the cost of the trajectory.
-        '''
-
-        self.cost_traj = [lagrangian(step, state, ctrl) for step, (state, ctrl)
-                          in enumerate(zip(self.state_traj, self.ctrl_traj))]
-        self.cost_traj[-1] += end_cost(self.state_traj[-1])
-
-        self.cost_traj = np.array(self.cost_traj)
-        self.cum_cost = (self.cost_traj).cumsum()
-
-
+from .systemtrajectory import SystemTrajectory
+from ._helpers import get_closest_idx, make_grid, is_array
+from ._exact_dp import calculate_valuefunction_exact, get_optimal_evolution_exact, calculate_q_factor
 class DynamicProgram:
     '''A class that solves a dynamic program. Takes the following arguments:
     evolution_fun: A function that takes a step, a state, and a control and returns the next state.
@@ -225,7 +84,7 @@ class DynamicProgram:
         for constraint in state_constraints:
 
             constr_eval = constraint['fun'](step, state)
-            #print("Constraint evaluation:\n{}".format(constr_eval))
+            # print("Constraint evaluation:\n{}".format(constr_eval))
             if constraint['type'] == 'ineq':
                 constr_bool = (constr_eval >= 0)
             else:
@@ -238,7 +97,7 @@ class DynamicProgram:
 
             if not np.array([constr_bool]).all():
                 return False
-            #print("State {} constraint:\n{}".format(constraint['type'],constr_bool))
+            # print("State {} constraint:\n{}".format(constraint['type'],constr_bool))
         return True
 
     def set_default_state_stepsize(self):
@@ -381,9 +240,9 @@ class DynamicProgram:
         else:
             self.ctrl_mesh = self.ctrl_grid
             self.ctrl_gridlengths = len(self.ctrl_grid)
-        
+
         self.grids_are_initd = True
-    
+
     def set_grids(self, state_align='left', ctrl_align='left'):
         '''Sets the state and control grids of the system. Takes the following arguments:
         state_align: A string, or a tuple of strings. The alignment of the state grid. If it is a single string, then the alignment is the same for all state variables.
@@ -403,7 +262,6 @@ class DynamicProgram:
         if self.vf_is_initialized:
             pass
 
-        
         if not self.grids_are_initd:
             self.set_grids()
 
@@ -524,7 +382,7 @@ class DynamicProgram:
                 except KeyError:
                     constr_bool = np.isclose(
                         constr_eval, np.zeros_like(constr_eval))
-            
+
             constr_bool = constr_bool.all(axis=0)
 
             allowed_ctrls_bool = (allowed_ctrls_bool & constr_bool)
@@ -550,14 +408,13 @@ class DynamicProgram:
             state_grid = self.state_grid
             state_gridlengths = self.state_gridlengths
 
-
         # Boolean array of allowed controls of shape (num_ctrl_vars, m),
         # where m is the number of allowed controls which I think
         # we can't perfectly know a priori
         allowed_ctrls_bool = self.get_allowed_constraints_bool(
             step, state)
-        
-        ctrls = np.array(self.ctrl_mesh)[:,allowed_ctrls_bool]
+
+        ctrls = np.array(self.ctrl_mesh)[:, allowed_ctrls_bool]
         num_allowed_ctrls = ctrls.shape[1]
         # At this point, here are the shapes of things:
         # state: (num_state_vars,)
@@ -573,8 +430,7 @@ class DynamicProgram:
                                          x.reshape(state_shape),
                                          ctrls)
 
-
-        next_indices = np.array([(np.abs(next_states[i].reshape(num_allowed_ctrls,1)
+        next_indices = np.array([(np.abs(next_states[i].reshape(num_allowed_ctrls, 1)
                                          - state_grid[i].reshape(1, state_gridlengths[i]))
                                   .argmin(axis=1))
                                  for i in range(self.num_state_vars)])
@@ -603,11 +459,10 @@ class DynamicProgram:
 
         if policy == 'exact':
             # Assumes that we have calculated the value function for the next step
-            q_factor, next_states, allowed_ctrl = self.calculate_q_factor(
-                step, state)
-
-            idx = q_factor.argmin()
-            opt_q_factor = q_factor[idx]
+            state_idx = get_closest_idx(state, self.state_grid)
+            opt_ctrl_idx = self.opt_policy_idx[step][state_idx]
+            next_opt_state_idx = self.next_optimal_state_idx[step][state_idx]
+            next_opt_state = self.get_state_from_idx(next_opt_state_idx)
 
         elif policy == 'greedy':
 
@@ -616,20 +471,19 @@ class DynamicProgram:
             lagrangian = self.lagrangian(step, state, allowed_ctrl)
             idx = lagrangian.argmin()
             opt_q_factor = lagrangian[idx]
-        
+
         elif policy == 'rollout':
             raise NotImplementedError('Rollout policy not implemented yet.')
 
         else:
             raise ValueError('Unknown policy {}.'.format(policy))
-            
+
         opt_ctrl = allowed_ctrl[:, idx].reshape((self.num_ctrl_vars,))
         next_opt_state = next_states[:, idx].reshape((self.num_state_vars,))
         next_opt_state_idx = get_closest_idx(next_opt_state, self.state_grid)
         opt_ctrl_idx = get_closest_idx(opt_ctrl, self.ctrl_grid)
 
         return opt_ctrl_idx, opt_q_factor, next_opt_state, next_opt_state_idx
-
 
     def calculate_valuefunction(self, policy='exact'):
         '''Calculate the value function recursively using the dynamic programming equation.
@@ -645,131 +499,25 @@ class DynamicProgram:
 
         if policy == 'exact':
             print("Using exact policy. This might take time...")
-            self.calculate_valuefunction_exact()
-        
+            calculate_valuefunction_exact(self)
+
         else:
             raise ValueError("Policy {} not recognized.".format(policy))
-
-    def calculate_valuefunction_exact(self):
-        
-        
-        if self.num_state_vars == 1:
-            flat_range_state = self.state_gridlengths
-        else:
-            flat_range_state = len(self.state_mesh[0].flatten())
-        
-        for step in tqdm.tqdm(range(self.timesteps - 2, -1, -1), desc='Step'):
-        
-            # TODO change to multi-index iterator
-            for flat_idx in tqdm.tqdm(range(flat_range_state)):
-        
-                if self.num_state_vars == 1:  # convert state to array
-        
-                    #state = self.state_grid[flat_idx]
-                    state = np.array([self.state_grid[flat_idx]])
-                    #print("Index: {}".format(flat_idx))
-                else:
-                    # note that this index is reversed: the first component indexes the last variable in the mesh
-                    # We can access the state with [X[unraveled_ix] for X in self.state_mesh]
-                    unraveled_ix = np.unravel_index(
-                        flat_idx, self.state_mesh[0].shape)
-                    #print("Index: {}\nState: {}".format(unraveled_ix, [X[unraveled_ix] for X in self.state_mesh]))
-                    state = np.array([X[unraveled_ix]
-                                     for X in self.state_mesh])
-        
-                # at this point, state is an ndarray of dimension (num_state_vars,)
-        
-                if not self.satisfies_state_constraints(step, state):
-                    opt_q_factor = np.inf
-                    opt_ctrl_idx = np.full((self.num_ctrl_vars,), np.nan)
-                    next_opt_state_idx = np.full(
-                        (self.num_state_vars,), np.nan)
-        
-                # TODO fix this hacky shit
-                else:
-                    opt_ctrl_idx, opt_q_factor, next_opt_state, next_opt_state_idx = self.calculate_optimal_step(
-                        step, state)
-        
-                if self.num_state_vars == 1:
-        
-                    self.valuefunction[step, flat_idx] = opt_q_factor
-                    self.next_optimal_state_idx[step,
-                                                flat_idx] = next_opt_state_idx
-                    if self.num_ctrl_vars > 1:
-                        # please work[1:] #first entry is x index
-                        self.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
-                    else:
-                        self.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
-        
-                else:
-                    self.valuefunction[step][unraveled_ix[::-1]] = opt_q_factor
-                    self.opt_policy_idx[step][unraveled_ix[::-1]
-                                              ] = opt_ctrl_idx
-                    self.next_optimal_state_idx[step][unraveled_ix[::-1]
-                                                      ] = next_opt_state_idx
 
     def get_optimal_evolution(self, initial_state, init_step=0, policy='exact'):
+        current_state = np.array([initial_state]).reshape(
+            (self.num_state_vars,))
 
         if policy == 'exact':
-            return self.get_optimal_evolution_exact(initial_state, init_step)
+            return get_optimal_evolution_exact(self, current_state, init_step)
         elif policy == 'greedy':
-            return self.get_optimal_evolution_greedy(initial_state, init_step)
+            return self.get_optimal_evolution_greedy(self, current_state, init_step)
         else:
             raise ValueError("Policy {} not recognized.".format(policy))
-
-    def get_optimal_evolution_exact(self, initial_state, init_step=0):
-        if self.valuefunction is None:
-                print("Value function not calculated yet.")
-                self.calculate_valuefunction()
-
-        initial_state = np.array([initial_state]).reshape(
-                (self.num_state_vars,))
-        initial_state_idx = get_closest_idx(initial_state, self.state_grid)
-        state_trajectory_idx = [initial_state_idx]
-        state_trajectory = [initial_state]
-        ctrl_trajectory = []
-
-        if self.num_state_vars == 1:
-            init_ctrl_idx = self.opt_policy_idx[init_step,
-                                                initial_state_idx][0]
-        else:
-            init_ctrl_idx = self.opt_policy_idx[init_step][tuple(
-                initial_state_idx)]
-
-        # NOTE: if num_ctrl_vars = 1 then opt_policy_idx has an annoying extra superfluous dimension
-        # and I can account for it by ignoring it and reshaping at the end? probably that's the safest bet
-
-        for count, step in enumerate(range(init_step, self.timesteps - 1)):
-            state_idx = state_trajectory_idx[count]
-            if self.num_state_vars == 1:
-                ctrl_idx = self.opt_policy_idx[step, state_idx][0]
-                next_state_idx = self.next_optimal_state_idx[step,
-                                                            state_idx][0]
-            else:
-                # might be array even in 1d of controls
-                ctrl_idx = self.opt_policy_idx[(step,)+tuple(state_idx)]
-                next_state_idx = self.next_optimal_state_idx[(
-                    step,)+tuple(state_idx)]
-
-            next_state = self.get_state_from_idx(next_state_idx)
-            ctrl = self.get_ctrl_from_idx(ctrl_idx)  # is array even in 1d
-
-            # print(next_state)
-
-            state_trajectory.append(next_state)
-            state_trajectory_idx.append(next_state_idx)
-            ctrl_trajectory.append(ctrl)
-
-        system_traj = SystemTrajectory()
-        system_traj.set_ctrl_trajectory(np.array(ctrl_trajectory))
-        system_traj.set_state_trajectory(np.array(state_trajectory))
-        system_traj.calculate_cost(self.lagrangian, self.end_cost)
-
-        return system_traj
 
     def get_optimal_evolution_greedy(self, initial_state, init_step=0):
         current_state = np.array([initial_state]).reshape(
-                (self.num_state_vars,))
+            (self.num_state_vars,))
 
         state_trajectory = [current_state]
         ctrl_trajectory = []
@@ -777,12 +525,12 @@ class DynamicProgram:
         for step in range(init_step, self.timesteps - 1):
 
             (opt_ctrl_idx,
-            opt_q_factor,
-            next_opt_state,
-            next_opt_state_idx) = self.calculate_optimal_step(step, current_state, policy='greedy')
+             opt_q_factor,
+             next_opt_state,
+             next_opt_state_idx) = self.calculate_optimal_step(step, current_state, policy='greedy')
 
             ctrl = self.get_ctrl_from_idx(opt_ctrl_idx)
-            
+
             state_trajectory.append(next_opt_state)
             ctrl_trajectory.append(ctrl)
 
@@ -794,4 +542,3 @@ class DynamicProgram:
         system_traj.calculate_cost(self.lagrangian, self.end_cost)
 
         return system_traj
-
