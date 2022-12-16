@@ -27,15 +27,16 @@ def calculate_q_factor(prog, step, state):
 def optimize_q_factor(prog, step, state):
 
     q_factor, next_states, allowed_ctrl = calculate_q_factor(prog, step, state)
-    
+
     opt_idx = q_factor.argmin()
 
     opt_q_factor = q_factor[opt_idx]
     opt_ctrl = allowed_ctrl[:,opt_idx]
+    opt_ctrl_idx = get_closest_idx(opt_ctrl, prog.ctrl_grid)
     next_state = next_states[:,opt_idx]
     next_state_idx = get_closest_idx(next_state, prog.state_grid)
 
-    return opt_idx, opt_q_factor, next_state, next_state_idx
+    return opt_ctrl_idx, opt_q_factor, next_state, next_state_idx
 
 
 def calculate_valuefunction_exact(prog):
