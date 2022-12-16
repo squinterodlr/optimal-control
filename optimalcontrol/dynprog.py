@@ -69,37 +69,6 @@ class DynamicProgram:
         '''
         self.ctrl_constraints = constraints
 
-    def satisfies_state_constraints(self, step, state):
-        '''Checks whether the state satisfies the state constraints.
-        Takes the following arguments:
-        step: The current step of the trajectory.
-        state: The current state of the system.
-        '''
-        # Check whether constraints is a tuple or a dictionary
-        if isinstance(self.state_constraints, dict):
-            state_constraints = [self.state_constraints]
-        else:
-            state_constraints = self.state_constraints
-
-        for constraint in state_constraints:
-
-            constr_eval = constraint['fun'](step, state)
-            # print("Constraint evaluation:\n{}".format(constr_eval))
-            if constraint['type'] == 'ineq':
-                constr_bool = (constr_eval >= 0)
-            else:
-                try:
-                    constr_bool = np.isclose(constr_eval, np.zeros_like(
-                        constr_eval), atol=constraint['tol'])
-                except KeyError:
-                    constr_bool = np.isclose(
-                        constr_eval, np.zeros_like(constr_eval))
-
-            if not np.array([constr_bool]).all():
-                return False
-            # print("State {} constraint:\n{}".format(constraint['type'],constr_bool))
-        return True
-
     def set_default_state_stepsize(self):
         '''Sets the default state stepsize. This is the stepsize used if the user does not specify a stepsize.
         '''

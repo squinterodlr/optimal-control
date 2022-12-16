@@ -3,6 +3,7 @@ Implementation of exact dynamic programming
 '''
 from ._helpers import get_closest_idx
 from .systemtrajectory import SystemTrajectory
+from ._constraints import satisfies_state_constraints
 import numpy as np
 import tqdm
 
@@ -68,7 +69,7 @@ def calculate_valuefunction_exact(prog):
 
             # at this point, state is an ndarray of dimension (num_state_vars,)
 
-            if not prog.satisfies_state_constraints(step, state):
+            if not satisfies_state_constraints(prog, step, state):
                 opt_q_factor = np.inf
                 opt_ctrl_idx = np.full((prog.num_ctrl_vars,), np.nan)
                 next_opt_state_idx = np.full(
