@@ -335,8 +335,24 @@ class DynamicProgram:
 
         return next_states, next_indices, ctrls, allowed_ctrls_bool
 
-    def get_optimal_step(self, step, state, policy='exact'):
-
+    def get_optimal_step(self, step, state, policy='exact', horizon=None):
+        '''Returns the optimal control and the next state for the given state and step.
+        Takes the following arguments:
+            step: The current timestep.
+            state: The current state. Must be of shape (num_state_vars,).
+            policy: The policy to use, default 'exact'. Can be 'exact', 'greedy' or 'rollout'.
+                    If 'exact' we assume we have calculated the value function for the next step.
+                    Otherwise it is calculated. Very slow but exact. If 'greedy' we use the
+                    greedy policy, which is very suboptimal. If 'rollout' we use a rollout
+                    policy, which is a bit better than greedy but still not optimal.
+            horizon: The horizon to use for the rollout policy. Default None, which is taken as
+                    the maximum timesteps in the program.
+        returns:
+            next_state: ndarray of dimension (num_state_vars,)
+            next_state_idx: int ndarray of dimension (num_state_vars,)
+            opt_ctrl: ndarray of dimension (num_ctrl_vars,)
+            opt_ctrl_idx: int ndarray of dimension (num_ctrl_vars,)
+        '''
         if policy == 'exact':
             # Assumes that we have calculated the value function for the next step
             return get_optimal_step_exact(self, step, state)
@@ -369,18 +385,22 @@ class DynamicProgram:
         else:
             raise ValueError("Policy {} not recognized.".format(policy))
 
-    def get_optimal_evolution(self, initial_state, init_step=0, policy='exact'):
-        current_state = np.array([initial_state]).reshape(
-            (self.num_state_vars,))
-
-        if policy == 'exact':
-            return get_optimal_evolution_exact(self, current_state, init_step)
-        elif policy == 'greedy':
-            return self.get_optimal_evolution_greedy(self, current_state, init_step)
-        else:
-            raise ValueError("Policy {} not recognized.".format(policy))
-
-    def get_optimal_evolution_greedy(self, initial_state, init_step=0, horizon=None):
+    def get_optimal_evolution(self, initial_state, init_step=0, horizon=None, policy='exact'):
+        '''Get the optimal evolution of the system. Takes the following arguments:
+        initial_state: The initial state of the system. Must be of shape (num_state_vars,).
+        init_step: The initial timestep. Default is 0.
+        horizon: The horizon of the evolution. Default is none, in which case it is
+            defined the number of timesteps minus 1.
+        policy: The policy to use. Default is 'exact'. With 'exact', the optimal
+            evolution is found with exact dynamic programming, which is a glorified
+            brute force search. With 'greedy', the optimal evolution is found by
+            choosing the control that minimizes the Q-factor at each step. This is
+            much faster but likely not optimal. With 'rollout', the optimal evolution
+            if found by optimizing the Q-factor calculated with the value function associated
+            to a heuristic policy (default is 'greedy').
+        Returns:
+            state_trajectory: Object of type StateTrajectory.'''
+        
         current_state = np.array([initial_state]).reshape(
             (self.num_state_vars,))
 
@@ -389,16 +409,17 @@ class DynamicProgram:
 
         if horizon is None:
             horizon = self.timesteps - 1
-        
         else:
             horizon = min(horizon, self.timesteps - 1)
 
         for step in range(init_step, horizon):
 
+            opt_result = self.get_optimal_step(step, current_state, policy=policy, horizon=horizon)
+            
             (opt_ctrl_idx,
-             opt_q_factor,
-             next_opt_state,
-             next_opt_state_idx) = self.calculate_optimal_step(step, current_state, policy='greedy')
+            opt_q_factor,
+            next_opt_state,
+            next_opt_state_idx) = opt_result
 
             ctrl = self.get_ctrl_from_idx(opt_ctrl_idx)
 

@@ -4,8 +4,6 @@ Greedy methods for optimal control'''
 import numpy as np
 from ._helpers import get_closest_idx
 
-
-
 def get_optimal_step_greedy(prog, step, state=None, state_idx=None):
     '''Get the control and next state at a given time step and state, with
     a greedy policy.
