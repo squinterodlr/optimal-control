@@ -101,7 +101,7 @@ def calculate_valuefunction_exact(prog):
                 prog.next_optimal_state_idx[step][unraveled_ix[::-1]
                                                     ] = next_opt_state_idx
 
-def get_optimal_step_exact(prog, step, state):
+def get_optimal_step_exact(prog, step, state=None, state_idx=None):
     '''Get the optimal control and next state at a given time step and state,
     assuming the value function has been calculated using exact dynamic programming.
     Returns the optimal control and the optimal next state.
@@ -116,9 +116,14 @@ def get_optimal_step_exact(prog, step, state):
         print("Value function not calculated yet.")
         calculate_valuefunction_exact(prog)
 
-    state = np.array([state]).reshape((prog.num_state_vars,))
-    state_idx = get_closest_idx(state, prog.state_grid)
-
+    if state is not None:
+        state = np.array([state]).reshape((prog.num_state_vars,))
+        state_idx = get_closest_idx(state, prog.state_grid)
+    elif state_idx is not None:
+        state = prog.get_state_from_idx(state_idx)
+    else:
+        raise ValueError("Either state or state_idx must be specified.")
+        
     opt_ctrl_idx = prog.opt_policy_idx[step][state_idx]
     next_state_idx = prog.next_optimal_state_idx[step][state_idx]
     next_state = prog.get_state_from_idx(next_state_idx)
