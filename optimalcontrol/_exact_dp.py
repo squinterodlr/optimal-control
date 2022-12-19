@@ -89,11 +89,7 @@ def calculate_valuefunction_exact(prog):
                 prog.valuefunction[step, flat_idx] = opt_q_factor
                 prog.next_optimal_state_idx[step,
                                             flat_idx] = next_opt_state_idx
-                if prog.num_ctrl_vars > 1:
-                    # please work[1:] #first entry is x index
-                    prog.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
-                else:
-                    prog.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
+                prog.opt_policy_idx[step, flat_idx] = opt_ctrl_idx
 
             else:
                 prog.valuefunction[step][unraveled_ix[::-1]] = opt_q_factor

@@ -386,7 +386,12 @@ class DynamicProgram:
         else:
             raise ValueError("Policy {} not recognized.".format(policy))
 
-    def get_optimal_evolution(self, initial_state, init_step=0, horizon=None, policy='exact'):
+    def get_optimal_evolution(self,
+                                initial_state,
+                                init_step=0,
+                                horizon=None,
+                                policy='exact',
+                                verbose=False):
         '''Get the optimal evolution of the system. Takes the following arguments:
         initial_state: The initial state of the system. Must be of shape (num_state_vars,).
         init_step: The initial timestep. Default is 0.
@@ -417,12 +422,17 @@ class DynamicProgram:
 
             opt_result = self.get_optimal_step(step, current_state, policy=policy, horizon=horizon)
             
-            (opt_ctrl_idx,
-            opt_q_factor,
-            next_opt_state,
-            next_opt_state_idx) = opt_result
+            (next_opt_state,
+            next_opt_state_idx,
+            ctrl,
+            ctrl_idx) = opt_result
 
-            ctrl = self.get_ctrl_from_idx(opt_ctrl_idx)
+            if verbose:
+                print("Step: {}".format(step))
+                print("Current state: {}".format(current_state))
+                print("Next state: {}".format(next_opt_state))
+                print("Control: {}".format(ctrl))
+                print("")
 
             state_trajectory.append(next_opt_state)
             ctrl_trajectory.append(ctrl)
