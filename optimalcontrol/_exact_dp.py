@@ -110,7 +110,6 @@ def get_optimal_step_exact(prog, step, state):
         state: ndarray of dimension (num_state_vars,)
     Returns:
         opt_ctrl_idx: int ndarray of dimension (num_ctrl_vars,)
-        opt_q_factor?
         next_state: ndarray of dimension (num_state_vars,)
     '''
     if prog.valuefunction is None:
@@ -120,18 +119,12 @@ def get_optimal_step_exact(prog, step, state):
     state = np.array([state]).reshape((prog.num_state_vars,))
     state_idx = get_closest_idx(state, prog.state_grid)
 
-    state_idx = get_closest_idx(state, prog.state_grid)
     opt_ctrl_idx = prog.opt_policy_idx[step][state_idx]
-    next_opt_state_idx = prog.next_optimal_state_idx[step][state_idx]
-    next_opt_state = prog.get_state_from_idx(next_opt_state_idx)
+    next_state_idx = prog.next_optimal_state_idx[step][state_idx]
+    next_state = prog.get_state_from_idx(next_state_idx)
+    opt_ctrl = prog.get_ctrl_from_idx(opt_ctrl_idx)
 
-    opt_ctrl_idx = prog.opt_policy_idx[step, state_idx]
-    opt_ctrl = prog.ctrl_grid[opt_ctrl_idx]
-
-    next_state_idx = prog.next_optimal_state_idx[step, state_idx]
-    next_state = prog.state_grid[next_state_idx]
-
-    return opt_ctrl, next_state
+    return next_state, next_state_idx, opt_ctrl, opt_ctrl_idx
 
 def get_optimal_evolution_exact(prog, initial_state, init_step=0):
     '''Get the optimal evolution of the system starting from initial_state at time init_step.
