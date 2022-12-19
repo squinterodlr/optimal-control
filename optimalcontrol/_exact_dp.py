@@ -107,7 +107,9 @@ def get_optimal_step_exact(prog, step, state=None, state_idx=None):
     Returns the optimal control and the optimal next state.
     Takes the following arguments:
         step: int. The time step.
-        state: ndarray of dimension (num_state_vars,)
+        state: ndarray of dimension (num_state_vars,). Must be specified if state_idx is not, is
+            ignored if state_idx is specified.
+        state_idx: int ndarray of dimension (num_state_vars,). Must be specified if state is not.
     Returns:
         opt_ctrl_idx: int ndarray of dimension (num_ctrl_vars,)
         next_state: ndarray of dimension (num_state_vars,)
@@ -116,11 +118,11 @@ def get_optimal_step_exact(prog, step, state=None, state_idx=None):
         print("Value function not calculated yet.")
         calculate_valuefunction_exact(prog)
 
-    if state is not None:
+    if state_idx is not None:
+        state = prog.get_state_from_idx(state_idx)
+    elif state is not None:
         state = np.array([state]).reshape((prog.num_state_vars,))
         state_idx = get_closest_idx(state, prog.state_grid)
-    elif state_idx is not None:
-        state = prog.get_state_from_idx(state_idx)
     else:
         raise ValueError("Either state or state_idx must be specified.")
         
@@ -156,6 +158,10 @@ def get_optimal_evolution_exact(prog, initial_state, init_step=0):
 
     for count, step in enumerate(range(init_step, prog.timesteps - 1)):
         state_idx = state_trajectory_idx[count]
+
+        next_state, next_state_idx, opt_ctrl, opt_ctrl_idx = get_optimal_step_exact(prog, step=step,
+            state_idx=state_idx)
+
         if prog.num_state_vars == 1:
             ctrl_idx = prog.opt_policy_idx[step, state_idx][0]
             next_state_idx = prog.next_optimal_state_idx[step,
