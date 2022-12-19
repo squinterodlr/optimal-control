@@ -112,8 +112,10 @@ def get_optimal_step_exact(prog, step, state=None, state_idx=None):
             ignored if state_idx is specified.
         state_idx: int ndarray of dimension (num_state_vars,). Must be specified if state is not.
     Returns:
-        opt_ctrl_idx: int ndarray of dimension (num_ctrl_vars,)
         next_state: ndarray of dimension (num_state_vars,)
+        next_state_idx: int ndarray of dimension (num_state_vars,)
+        opt_ctrl: ndarray of dimension (num_ctrl_vars,)
+        opt_ctrl_idx: int ndarray of dimension (num_ctrl_vars,)
     '''
     if state_idx is not None:
         state = prog.get_state_from_idx(state_idx)
@@ -147,7 +149,7 @@ def get_optimal_evolution_exact(prog, initial_state, init_step=0):
     if prog.valuefunction is None:
         warnings.warn("Value function not calculated. Calculating now.", RuntimeWarning)
         calculate_valuefunction_exact(prog)
-        
+
     initial_state = np.array([initial_state]).reshape(
         (prog.num_state_vars,))
     initial_state_idx = get_closest_idx(initial_state, prog.state_grid)
