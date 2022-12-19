@@ -280,7 +280,17 @@ class DynamicProgram:
         '''
         Returns a grid of all next states based on the evolution equation and the
         grid of controls. Assumes that state is a *single* state, i.e. of shape (num_state_vars,)
-        This is very inefficient and should be replaced with a more efficient method.
+        Takes contraints into account.
+        Takes the following arguments:
+            step: The current timestep.
+            state: The current state. Must be of shape (num_state_vars,).
+        Returns:
+            next_states: Array of shape (num_state_vars, m) where m is the number of allowed controls.
+            next_indices: Int array of shape (num_state_vars, m), with the indices
+                corresponding to the states next_states.
+            ctrls: Array of shape (num_ctrl_vars, m), with the allowed controls.
+            allowed_ctrls_bool: Boolean array of shape (ctrl_gridlengths[0], ctrl_gridlengths[1], ...),
+                with True or False corresponding to whether the control is allowed.
         '''
 
         if self.num_state_vars == 1:
@@ -384,14 +394,20 @@ class DynamicProgram:
         else:
             raise ValueError("Policy {} not recognized.".format(policy))
 
-    def get_optimal_evolution_greedy(self, initial_state, init_step=0):
+    def get_optimal_evolution_greedy(self, initial_state, init_step=0, horizon=None):
         current_state = np.array([initial_state]).reshape(
             (self.num_state_vars,))
 
         state_trajectory = [current_state]
         ctrl_trajectory = []
 
-        for step in range(init_step, self.timesteps - 1):
+        if horizon is None:
+            horizon = self.timesteps - 1
+        
+        else:
+            horizon = min(horizon, self.timesteps - 1)
+
+        for step in range(init_step, horizon):
 
             (opt_ctrl_idx,
              opt_q_factor,
