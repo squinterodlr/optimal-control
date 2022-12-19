@@ -3,10 +3,11 @@ Dynamic programming
 """
 import numpy as np
 from .systemtrajectory import SystemTrajectory
-from ._helpers import get_closest_idx, make_grid, is_array
+from ._helpers import make_grid, is_array
 from ._constraints import get_allowed_constraints_bool
-from ._exact_dp import calculate_valuefunction_exact, get_optimal_evolution_exact, get_optimal_step_exact
+from ._exact_dp import calculate_valuefunction_exact, get_optimal_step_exact
 from ._greedy import get_optimal_step_greedy
+from ._rollout import get_optimal_step_rollout
 class DynamicProgram:
     '''A class that solves a dynamic program. Takes the following arguments:
     evolution_fun: A function that takes a step, a state, and a control and returns the next state.
@@ -361,7 +362,7 @@ class DynamicProgram:
             return get_optimal_step_greedy(self, step, state)
 
         elif policy == 'rollout':
-            raise NotImplementedError('Rollout policy not implemented yet.')
+            return get_optimal_step_rollout(self, step, state, horizon=horizon)
 
         else:
             raise ValueError('Unknown policy {}.'.format(policy))
