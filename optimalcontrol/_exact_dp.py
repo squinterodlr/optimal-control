@@ -6,6 +6,7 @@ from .systemtrajectory import SystemTrajectory
 from ._constraints import satisfies_state_constraints
 import numpy as np
 import tqdm
+import warnings
 
 def calculate_q_factor(prog, step, state):
         '''
@@ -114,10 +115,6 @@ def get_optimal_step_exact(prog, step, state=None, state_idx=None):
         opt_ctrl_idx: int ndarray of dimension (num_ctrl_vars,)
         next_state: ndarray of dimension (num_state_vars,)
     '''
-    if prog.valuefunction is None:
-        print("Value function not calculated yet.")
-        calculate_valuefunction_exact(prog)
-
     if state_idx is not None:
         state = prog.get_state_from_idx(state_idx)
     elif state is not None:
@@ -125,7 +122,12 @@ def get_optimal_step_exact(prog, step, state=None, state_idx=None):
         state_idx = get_closest_idx(state, prog.state_grid)
     else:
         raise ValueError("Either state or state_idx must be specified.")
-        
+
+    if prog.valuefunction is None:
+        warnings.warn("Value function not calculated. Calculating now.", RuntimeWarning)
+        calculate_valuefunction_exact(prog)
+
+
     opt_ctrl_idx = prog.opt_policy_idx[step][state_idx]
     next_state_idx = prog.next_optimal_state_idx[step][state_idx]
     next_state = prog.get_state_from_idx(next_state_idx)
@@ -143,9 +145,9 @@ def get_optimal_evolution_exact(prog, initial_state, init_step=0):
         system_traj: Object of class SystemTrajectory containing the state and control trajectories.
     '''
     if prog.valuefunction is None:
-        print("Value function not calculated yet.")
-        prog.calculate_valuefunction()
-
+        warnings.warn("Value function not calculated. Calculating now.", RuntimeWarning)
+        calculate_valuefunction_exact(prog)
+        
     initial_state = np.array([initial_state]).reshape(
         (prog.num_state_vars,))
     initial_state_idx = get_closest_idx(initial_state, prog.state_grid)
@@ -162,24 +164,24 @@ def get_optimal_evolution_exact(prog, initial_state, init_step=0):
         next_state, next_state_idx, opt_ctrl, opt_ctrl_idx = get_optimal_step_exact(prog, step=step,
             state_idx=state_idx)
 
-        if prog.num_state_vars == 1:
-            ctrl_idx = prog.opt_policy_idx[step, state_idx][0]
-            next_state_idx = prog.next_optimal_state_idx[step,
-                                                            state_idx][0]
-        else:
-            # might be array even in 1d of controls
-            ctrl_idx = prog.opt_policy_idx[(step,)+tuple(state_idx)]
-            next_state_idx = prog.next_optimal_state_idx[(
-                step,)+tuple(state_idx)]
-
-        next_state = prog.get_state_from_idx(next_state_idx)
-        ctrl = prog.get_ctrl_from_idx(ctrl_idx)  # is array even in 1d
-
-        # print(next_state)
-
         state_trajectory.append(next_state)
         state_trajectory_idx.append(next_state_idx)
-        ctrl_trajectory.append(ctrl)
+        ctrl_trajectory.append(opt_ctrl)
+
+    # Flatten trajectories in the case of 1D state or control variables
+    if prog.num_ctrl_vars == 1:
+        ctrl_trajectory = np.array(ctrl_trajectory).reshape(
+            (prog.timesteps - 1,))
+    else:
+        ctrl_trajectory = np.array(ctrl_trajectory).reshape(
+            (prog.timesteps - 1, prog.num_ctrl_vars))
+    
+    if prog.num_state_vars == 1:
+        state_trajectory = np.array(state_trajectory).reshape(
+            (prog.timesteps,))
+    else:
+        state_trajectory = np.array(state_trajectory).reshape(
+            (prog.timesteps, prog.num_state_vars))
 
     system_traj = SystemTrajectory()
     system_traj.set_ctrl_trajectory(np.array(ctrl_trajectory))
