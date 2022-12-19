@@ -4,8 +4,9 @@ Dynamic programming
 import numpy as np
 from .systemtrajectory import SystemTrajectory
 from ._helpers import get_closest_idx, make_grid, is_array
-from ._exact_dp import calculate_valuefunction_exact, get_optimal_evolution_exact
 from ._constraints import get_allowed_constraints_bool
+from ._exact_dp import calculate_valuefunction_exact, get_optimal_evolution_exact, get_optimal_step_exact
+from ._greedy import get_optimal_step_greedy
 class DynamicProgram:
     '''A class that solves a dynamic program. Takes the following arguments:
     evolution_fun: A function that takes a step, a state, and a control and returns the next state.
@@ -334,35 +335,20 @@ class DynamicProgram:
 
         return next_states, next_indices, ctrls, allowed_ctrls_bool
 
-    def calculate_optimal_step(self, step, state, policy='exact'):
+    def get_optimal_step(self, step, state, policy='exact'):
 
         if policy == 'exact':
             # Assumes that we have calculated the value function for the next step
-            state_idx = get_closest_idx(state, self.state_grid)
-            opt_ctrl_idx = self.opt_policy_idx[step][state_idx]
-            next_opt_state_idx = self.next_optimal_state_idx[step][state_idx]
-            next_opt_state = self.get_state_from_idx(next_opt_state_idx)
+            return get_optimal_step_exact(self, step, state)
 
         elif policy == 'greedy':
-
-            next_states, next_states_idx, allowed_ctrl, allowed_ctrls_bool = self.get_all_next_states(
-                step, state)
-            lagrangian = self.lagrangian(step, state, allowed_ctrl)
-            idx = lagrangian.argmin()
-            opt_q_factor = lagrangian[idx]
+            return get_optimal_step_greedy(self, step, state)
 
         elif policy == 'rollout':
             raise NotImplementedError('Rollout policy not implemented yet.')
 
         else:
             raise ValueError('Unknown policy {}.'.format(policy))
-
-        opt_ctrl = allowed_ctrl[:, idx].reshape((self.num_ctrl_vars,))
-        next_opt_state = next_states[:, idx].reshape((self.num_state_vars,))
-        next_opt_state_idx = get_closest_idx(next_opt_state, self.state_grid)
-        opt_ctrl_idx = get_closest_idx(opt_ctrl, self.ctrl_grid)
-
-        return opt_ctrl_idx, opt_q_factor, next_opt_state, next_opt_state_idx
 
     def calculate_valuefunction(self, policy='exact'):
         '''Calculate the value function recursively using the dynamic programming equation.
