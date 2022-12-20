@@ -79,7 +79,7 @@ def calculate_valuefunction_exact(prog):
                 next_opt_state_idx = np.full(
                     (prog.num_state_vars,), np.nan)
 
-            # TODO fix this hacky shit
+            
             else:
                 opt_ctrl_idx, opt_q_factor, next_opt_state, next_opt_state_idx = optimize_q_factor(prog,
                     step, state)
@@ -126,8 +126,8 @@ def get_optimal_step_exact(prog, step, state=None, state_idx=None):
         calculate_valuefunction_exact(prog)
 
 
-    opt_ctrl_idx = prog.opt_policy_idx[step][state_idx]
-    next_state_idx = prog.next_optimal_state_idx[step][state_idx]
+    opt_ctrl_idx = prog.opt_policy_idx[step][tuple(state_idx)]
+    next_state_idx = prog.next_optimal_state_idx[step][tuple(state_idx)]
     next_state = prog.get_state_from_idx(next_state_idx)
     opt_ctrl = prog.get_ctrl_from_idx(opt_ctrl_idx)
 
