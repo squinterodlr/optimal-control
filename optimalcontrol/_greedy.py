@@ -4,7 +4,7 @@ Greedy methods for optimal control'''
 import numpy as np
 from ._helpers import get_closest_idx
 
-def get_optimal_step_greedy(prog, step, state=None, state_idx=None):
+def get_optimal_step_greedy(prog, step, state=None, state_idx=None, **kwargs):
     '''Get the control and next state at a given time step and state, with
     a greedy policy.
     Returns the control and next state.
@@ -31,9 +31,9 @@ def get_optimal_step_greedy(prog, step, state=None, state_idx=None):
         step, state)
     lagrangian = prog.lagrangian(step, state, allowed_ctrl)
     idx = lagrangian.argmin()
-    opt_ctrl = allowed_ctrl[idx]
-    opt_ctrl_idx = prog.get_ctrl_idx(opt_ctrl)
-    next_state = next_states[idx]
-    next_state_idx = next_states_idx[idx]
+    opt_ctrl = allowed_ctrl[:, idx]
+    opt_ctrl_idx = get_closest_idx(opt_ctrl, prog.ctrl_grid)
+    next_state = next_states[:, idx]
+    next_state_idx = next_states_idx[:, idx]
 
     return next_state, next_state_idx, opt_ctrl, opt_ctrl_idx

@@ -2,6 +2,7 @@
 Dynamic programming
 """
 import numpy as np
+from tqdm import tqdm
 from .systemtrajectory import SystemTrajectory
 from ._helpers import make_grid, is_array
 from ._constraints import get_allowed_constraints_bool
@@ -241,9 +242,9 @@ class DynamicProgram:
             self.end_cost = lambda *x: 0
 
         if self.num_state_vars == 1:
-            vf_shape = (self.timesteps, self.state_gridlengths)
+            vf_shape = (self.timesteps+1, self.state_gridlengths)
         else:
-            vf_shape = tuple([self.timesteps] + self.state_gridlengths)
+            vf_shape = tuple([self.timesteps+1] + self.state_gridlengths)
 
         self.valuefunction = np.full(vf_shape, np.inf)
         self.opt_policy_idx = np.zeros(
@@ -389,9 +390,11 @@ class DynamicProgram:
     def get_optimal_evolution(self,
                                 initial_state,
                                 init_step=0,
+                                end_step=None,
                                 horizon=None,
                                 policy='exact',
-                                verbose=False):
+                                verbose=False,
+                                progress_bar=True):
         '''Get the optimal evolution of the system. Takes the following arguments:
         initial_state: The initial state of the system. Must be of shape (num_state_vars,).
         init_step: The initial timestep. Default is 0.
@@ -413,12 +416,14 @@ class DynamicProgram:
         state_trajectory = [current_state]
         ctrl_trajectory = []
 
-        if horizon is None:
-            horizon = self.timesteps - 1
+        if end_step is None:
+            end_step = self.timesteps
         else:
-            horizon = min(horizon, self.timesteps - 1)
+            end_step = min(end_step, self.timesteps)
 
-        for step in range(init_step, horizon):
+        iterator = tqdm(range(init_step, end_step)) if progress_bar else range(init_step, end_step)
+
+        for step in iterator:
 
             opt_result = self.get_optimal_step(step, current_state, policy=policy, horizon=horizon)
             
@@ -427,7 +432,7 @@ class DynamicProgram:
             ctrl,
             ctrl_idx) = opt_result
 
-            if verbose:
+            if verbose or policy=='rollout':
                 print("Step: {}".format(step))
                 print("Current state: {}".format(current_state))
                 print("Next state: {}".format(next_opt_state))
@@ -438,6 +443,21 @@ class DynamicProgram:
             ctrl_trajectory.append(ctrl)
 
             current_state = next_opt_state
+
+        # Flatten trajectories in the case of 1D state or control variables
+        if self.num_ctrl_vars == 1:
+            ctrl_trajectory = np.array(ctrl_trajectory).reshape(
+                (self.timesteps,))
+        else:
+            ctrl_trajectory = np.array(ctrl_trajectory).reshape(
+                (self.timesteps, self.num_ctrl_vars))
+        
+        if self.num_state_vars == 1:
+            state_trajectory = np.array(state_trajectory).reshape(
+                (self.timesteps+1,))
+        else:
+            state_trajectory = np.array(state_trajectory).reshape(
+                (self.timesteps+1, self.num_state_vars))
 
         system_traj = SystemTrajectory()
         system_traj.set_ctrl_trajectory(np.array(ctrl_trajectory))

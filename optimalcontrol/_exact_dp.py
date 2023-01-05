@@ -52,7 +52,7 @@ def calculate_valuefunction_exact(prog):
     else:
         flat_range_state = len(prog.state_mesh[0].flatten())
 
-    for step in tqdm.tqdm(range(prog.timesteps - 2, -1, -1), desc='Step'):
+    for step in tqdm.tqdm(range(prog.timesteps - 1, -1, -1), desc='Step'):
 
         # TODO change to multi-index iterator
         for flat_idx in tqdm.tqdm(range(flat_range_state)):
@@ -98,7 +98,7 @@ def calculate_valuefunction_exact(prog):
                 prog.next_optimal_state_idx[step][unraveled_ix[::-1]
                                                     ] = next_opt_state_idx
 
-def get_optimal_step_exact(prog, step, state=None, state_idx=None):
+def get_optimal_step_exact(prog, step, state=None, state_idx=None, **kwargs):
     '''Get the optimal control and next state at a given time step and state,
     assuming the value function has been calculated using exact dynamic programming.
     Returns the optimal control and the optimal next state.
